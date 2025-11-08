@@ -1,0 +1,163 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>11.11 Offer — Client Preview</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#f59e0b}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#071022 0%, #07162a 100%);color:#e6eef8}
+    .wrap{max-width:1100px;margin:28px auto;padding:18px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+    header h1{font-size:20px;margin:0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:8px;position:relative;overflow:hidden;user-select:none}
+    .media{height:340px;border-radius:8px;background:#0b1220;display:flex;align-items:center;justify-content:center;position:relative}
+    .media img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+    .media video{max-width:100%;max-height:100%;display:block;pointer-events:none}
+
+    /* watermark */
+    .wm{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,0.35);backdrop-filter: blur(2px);padding:6px 8px;border-radius:6px;font-size:12px}
+
+    /* block clicking to direct-save */
+    .blocker{position:absolute;inset:0;cursor:default}
+
+    .meta{padding:8px;display:flex;justify-content:space-between;align-items:center}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:13px}
+
+    /* fullscreen viewer overlay */
+    .overlay{position:fixed;inset:0;background:linear-gradient(180deg, rgba(3,7,12,0.9), rgba(3,7,12,0.95));display:none;align-items:center;justify-content:center;z-index:1200}
+    .overlay.open{display:flex}
+    .viewer{max-width:90vw;max-height:90vh;position:relative}
+    .viewer img,.viewer video{width:100%;height:100%;object-fit:contain;border-radius:10px}
+    .close{position:absolute;top:-40px;right:0;color:#fff}
+
+    /* disable selection */
+    *{ -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none }
+
+    /* small footer */
+    footer{margin-top:18px;font-size:12px;color:#bcd3f5;opacity:0.9}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>11.11 Offer — Client Preview</h1>
+      <div style="margin-left:auto;font-size:13px;opacity:0.9">Preview only — Not downloadable</div>
+    </header>
+
+    <main>
+      <div class="grid" id="gallery"></div>
+    </main>
+
+    <footer>Tip: This viewer disables right-click and direct saving. It uses visible watermarks and low-res previews to protect designs.</footer>
+  </div>
+
+  <!-- overlay viewer -->
+  <div id="overlay" class="overlay" role="dialog" aria-hidden="true">
+    <div class="viewer" id="viewer">
+      <button id="closeBtn" class="close btn">Close</button>
+      <!-- media will be injected here -->
+    </div>
+  </div>
+
+  <script>
+    // --- CONFIG: replace these items with your own hosted previews (images or mp4)
+    // Prefer low-res / watermarked versions for previews
+    const galleryItems = [
+      {type:'image', src:'https://via.placeholder.com/1200x800?text=11.11+Design+1', title:'11.11 Post - Design 1'},
+      {type:'image', src:'https://via.placeholder.com/1200x800?text=11.11+Design+2', title:'11.11 Post - Design 2'},
+      {type:'video', src:'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4', title:'Short Promo Video'},
+      {type:'image', src:'https://via.placeholder.com/1200x800?text=11.11+Design+3', title:'11.11 Post - Design 3'}
+    ];
+
+    const gallery = document.getElementById('gallery');
+    const overlay = document.getElementById('overlay');
+    const viewer = document.getElementById('viewer');
+    const closeBtn = document.getElementById('closeBtn');
+
+    function makeCard(item, idx){
+      const card = document.createElement('div'); card.className='card';
+      const media = document.createElement('div'); media.className='media';
+
+      if(item.type==='image'){
+        const img = document.createElement('img'); img.alt = item.title; img.src = item.src;
+        media.appendChild(img);
+      } else if(item.type==='video'){
+        const video = document.createElement('video');
+        // don't show controls on the small card to make saving harder
+        video.src = item.src; video.preload='metadata'; video.muted=true; video.loop=true; video.autoplay=true;
+        media.appendChild(video);
+      }
+
+      const blocker = document.createElement('div'); blocker.className='blocker';
+      // open viewer on click of card (but not allow direct save)
+      card.addEventListener('click',()=>openViewer(item));
+
+      // watermark
+      const wm = document.createElement('div'); wm.className='wm'; wm.textContent = 'Trendy Tribes — Preview';
+      card.appendChild(media);
+      card.appendChild(blocker);
+      card.appendChild(wm);
+
+      const meta = document.createElement('div'); meta.className='meta';
+      const title = document.createElement('div'); title.textContent = item.title; meta.appendChild(title);
+      const viewBtn = document.createElement('button'); viewBtn.className='btn'; viewBtn.textContent='View'; viewBtn.onclick = (e)=>{ e.stopPropagation(); openViewer(item);} ;
+      meta.appendChild(viewBtn);
+      card.appendChild(meta);
+
+      // prevent default image dragging / context menu
+      card.addEventListener('dragstart',e=>e.preventDefault());
+      card.addEventListener('contextmenu',e=>e.preventDefault());
+
+      return card;
+    }
+
+    galleryItems.forEach((it,i)=> gallery.appendChild(makeCard(it,i)));
+
+    // overlay viewer
+    function openViewer(item){
+      // clear old
+      while(viewer.firstChild) viewer.removeChild(viewer.firstChild);
+      viewer.appendChild(closeBtn);
+
+      if(item.type==='image'){
+        const img = document.createElement('img'); img.src = item.src; img.alt=item.title; img.draggable=false;
+        // show watermark overlay on viewer
+        const w = document.createElement('div'); w.className='wm'; w.style.right='12px'; w.style.bottom='12px'; w.textContent='Trendy Tribes — Preview';
+        viewer.appendChild(img); viewer.appendChild(w);
+      } else if(item.type==='video'){
+        const vid = document.createElement('video'); vid.src=item.src; vid.controls=false; vid.autoplay=true; vid.muted=true; vid.playsInline=true; vid.loop=true; vid.draggable=false;
+        // prevent right-click on video
+        vid.addEventListener('contextmenu',e=>e.preventDefault());
+        viewer.appendChild(vid);
+      }
+      overlay.classList.add('open'); overlay.setAttribute('aria-hidden','false');
+      // add small delay then focus so mobile zoom doesn't trigger accidentally
+      setTimeout(()=>overlay.focus?.(),80);
+    }
+
+    function closeViewer(){ overlay.classList.remove('open'); overlay.setAttribute('aria-hidden','true'); }
+    closeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); closeViewer(); });
+    overlay.addEventListener('click',(e)=>{ if(e.target===overlay) closeViewer(); });
+
+    // Global protections (deterrents)
+    document.addEventListener('contextmenu',e=>e.preventDefault());
+    document.addEventListener('keydown',e=>{
+      // block common save shortcuts
+      if((e.ctrlKey||e.metaKey) && (e.key==='s' || e.key==='S' || e.key==='u' || e.key==='U')){ e.preventDefault(); }
+      // block print screen is impossible, but block ctrl+P
+      if((e.ctrlKey||e.metaKey) && e.key==='p') e.preventDefault();
+    });
+
+    // Extra: disable right-click on images/videos
+    window.addEventListener('mousedown', e=>{ if(e.button===2) e.preventDefault(); });
+
+    // Accessibility: allow keyboard to close
+    document.addEventListener('keyup', e=>{ if(e.key==='Escape') closeViewer(); });
+  </script>
+</body>
+</html>
+
